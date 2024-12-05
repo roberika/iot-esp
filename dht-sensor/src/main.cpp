@@ -13,14 +13,17 @@
 #define THRESHOLD_COLLECTION_ID "threshold/dht1"
 #define RECORDS_COLLECTION_ID "records"
 #define RECORDS_INTERVAL 10000
-#define USER_EMAIL "dht-firebase@if51.mdp.ac.id"
-#define USER_PASSWORD "janganlupo"
+// #define USER_EMAIL "dht-firebase@if51.mdp.ac.id"
+// #define USER_PASSWORD "janganlupo"
+#define USER_EMAIL "robatononihon@gmail.com"
+#define USER_PASSWORD "woweee"
 #define DATABASE_URL "https://dht-firebase-if51-default-rtdb.asia-southeast1.firebasedatabase.app/"
 #define DATABASE_SECRET "seXLmFU5gfHCwQ8SE4Y9yK1iDxLv1CAMJZtAkTed"
 #define MONITORING_INTERVAL 1000
-void authHandler(FirebaseApp app);
+void authHandler(FirebaseApp appFirestore);
 String getTimestampString(uint64_t sec);
 unsigned long getTime();
+void printResult(AsyncResult &aResult);
 
 // TODO: Belum di cek pin berapa
 #define BUZZER 4;
@@ -33,7 +36,7 @@ unsigned long getTime();
 // TODO: Having auth problems, switching to ServiceAuth tommorow
 DefaultNetwork network; 
 FirebaseApp appFirestore, appRealtime;
-UserAuth userAuth(API_KEY, USER_EMAIL, USER_PASSWORD);
+UserAuth userAuth(API_KEY, USER_EMAIL, USER_PASSWORD, 3000);
 LegacyToken legacyToken(DATABASE_SECRET);
 RealtimeDatabase database;
 AsyncResult resultFirestore, resultRealtime;
@@ -49,8 +52,6 @@ double thresholdDHTRightTemperature;
 double thresholdDHTRightHumidity;
 double recordedDHTRightTemperature;
 double recordedDHTRightHumidity;
-int documentCount;
-unsigned long lastAuthentication = 0;
 unsigned long lastFirestoreUpdate = 0;
 unsigned long lastRealtimeUpdate = 0;
 unsigned long epochTime; 
@@ -84,21 +85,25 @@ void setup() {
   Serial.print("Connecting to "); 
   Serial.println(FIREBASE_PROJECT_ID); 
 
-  //.. Bangun header dan inisialisasi
+  //.. Konek ke cloud firestore
   sslFirestore.setInsecure();
   sslFirestore.setBufferSizes(1024, 1024);
-  initializeApp(clientFirestore, appFirestore, getAuth(userAuth));
-  sslRealtime.setInsecure();
-  sslRealtime.setBufferSizes(1024, 1024);
-  initializeApp(clientRealtime, appRealtime, getAuth(legacyToken));
+  initializeApp(clientFirestore, appFirestore, getAuth(userAuth), resultFirestore);
 
-  //.. Konek ke cloud firestore
   authHandler(appFirestore);
+  Serial.println("Authentication Information");
+  Firebase.printf("User UID: %s\n", appFirestore.getUid().c_str());
+  Firebase.printf("Auth Token: %s\n", appFirestore.getToken().c_str());
+  Firebase.printf("Refresh Token: %s\n", appFirestore.getRefreshToken().c_str());
+
   appFirestore.getApp<Firestore::Documents>(docs);
   clientFirestore.setAsyncResult(resultFirestore);
 
   //.. Konek ke stream realtime database
-  authHandler(appRealtime);
+  sslRealtime.setInsecure();
+  sslRealtime.setBufferSizes(1024, 1024);
+  initializeApp(clientRealtime, appRealtime, getAuth(legacyToken));
+
   appRealtime.getApp<RealtimeDatabase>(database);
   database.url(DATABASE_URL);
   clientRealtime.setAsyncResult(resultRealtime);
@@ -111,8 +116,6 @@ void loop() {
   // Serial.println("New loop new me");
   Serial.println("Auth Firestore");
   authHandler(appFirestore);
-  Serial.println("Auth Realtime");
-  authHandler(appRealtime);
   Serial.println("Loop database");
   database.loop();
   Serial.println("Loop docs");
@@ -143,6 +146,7 @@ void loop() {
     Serial.println("Error wkwwkwkwkw");
     Firebase.printf("Error, msg: %s, code: %d\n", clientFirestore.lastError().message().c_str(), clientFirestore.lastError().code());
   }
+  printResult(resultFirestore);
   Serial.println(" ");
   // yield();
 
@@ -225,18 +229,44 @@ void loop() {
 }
 
 // Untuk autentikasi
-void authHandler(FirebaseApp app)
+void authHandler(FirebaseApp appFirestore)
 {
   // Blocking authentication handler with timeout
-  unsigned long lastAuthentication = millis();
-  while (app.isInitialized() && !app.ready() && millis() - lastAuthentication < 120 * 1000)
+  unsigned long ms = millis();
+  while (appFirestore.isInitialized() && !appFirestore.ready() && millis() - ms < 120 * 1000)
   {
     // The JWT token processor required for ServiceAuth and CustomAuth authentications.
     // JWT is a static object of JWTClass and it's not thread safe.
     // In multi-threaded operations (multi-FirebaseApp), you have to define JWTClass for each FirebaseApp,
     // and set it to the FirebaseApp via FirebaseApp::setJWTProcessor(<JWTClass>), before calling initializeApp.
-    JWT.loop(app.getAuth());
+    // Bukan multithreaded, so WHY
+    // Litteray disini cuma salahny
+    JWT.loop(appFirestore.getAuth());
+    printResult(resultFirestore);
   }
+}
+
+void printResult(AsyncResult &aResult)
+{
+    if (aResult.isEvent())
+    {
+        Firebase.printf("Event task: %s, msg: %s, code: %d\n", aResult.uid().c_str(), aResult.appEvent().message().c_str(), aResult.appEvent().code());
+    }
+
+    if (aResult.isDebug())
+    {
+        Firebase.printf("Debug task: %s, msg: %s\n", aResult.uid().c_str(), aResult.debug().c_str());
+    }
+
+    if (aResult.isError())
+    {
+        Firebase.printf("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(), aResult.error().message().c_str(), aResult.error().code());
+    }
+
+    if (aResult.available())
+    {
+        Firebase.printf("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.c_str());
+    }
 }
 
 unsigned long getTime() {
