@@ -18,8 +18,6 @@
 #define RECORDS_INTERVAL 10000
 #define USER_EMAIL "dht-firebase@if51.mdp.ac.id"
 #define USER_PASSWORD "janganlupo"
-// #define USER_EMAIL "robatononihon@gmail.com"
-// #define USER_PASSWORD "woweee"
 #define DATABASE_URL "https://dht-firebase-if51-default-rtdb.asia-southeast1.firebasedatabase.app/"
 #define DATABASE_SECRET "seXLmFU5gfHCwQ8SE4Y9yK1iDxLv1CAMJZtAkTed"
 #define MONITORING_INTERVAL 1000
@@ -53,10 +51,14 @@ double thresholdDHTLeftTemperature;
 double thresholdDHTLeftHumidity;
 double recordedDHTLeftTemperature;
 double recordedDHTLeftHumidity;
+bool leftDanger;
+
 double thresholdDHTRightTemperature;
 double thresholdDHTRightHumidity;
 double recordedDHTRightTemperature;
 double recordedDHTRightHumidity;
+bool rightDanger;
+
 unsigned long lastThresholdUpdate = 0;
 unsigned long lastFirestoreUpdate = 0;
 unsigned long lastRealtimeUpdate = 0;
@@ -84,7 +86,9 @@ void setup() {
   Serial.println(WiFi.localIP()); 
 
   // Konek ke server NTP
-  configTime(0, 0, ntpServer);
+  //.. UTC+7 & no daylight savings
+  //.. Manual karena yang ID diset ke 2004
+  configTime(7 * 3600, 0, ntpServer);
   epochTime = getTime();
   
   // Konek ke Firebase
@@ -124,7 +128,7 @@ void loop() {
     return;
   }
 
-  Serial.println("Loop start");
+  Serial.println("-- LOOP --");
   // Serial.println("Auth Firestore");
   authHandler(appFirestore);
   // Serial.println("Loop database");
@@ -139,17 +143,12 @@ void loop() {
 
     //.. Ambil Document dht1 dan dht2 pada Collection 
     //.. threshold yang berisi threshold peringatan buzzer
-    Serial.println("Fetching...");
+    Serial.println("Fetching thresholds...");
     String payload = docs.get(clientFirestore, Firestore::Parent(FIREBASE_PROJECT_ID), THRESHOLD_COLLECTION_ID, GetDocumentOptions(DocumentMask()));
-
-    //.. Tampilkan payload atau error
-    // printPayload(clientFirestore, payload);
-    // printResult(resultFirestore);
 
     //.. Muat threshold
     json decoded = json::parse(payload);
     json threshold = decoded.at("fields");
-    Serial.println("Thresholds...");
     thresholdDHTLeftTemperature = threshold.at("leftTemperature").at("doubleValue").template get<double>();
     thresholdDHTLeftHumidity = threshold.at("leftHumidity").at("doubleValue").template get<double>();
     thresholdDHTRightTemperature = threshold.at("rightTemperature").at("doubleValue").template get<double>();
@@ -162,11 +161,11 @@ void loop() {
   }
 
   // Ambil data suhu dan kelembaban dari dht
+  Serial.println("Recording room condition...");
   recordedDHTLeftTemperature = dhtLeft.readTemperature(false);
   recordedDHTLeftHumidity = dhtLeft.readHumidity();
   recordedDHTRightTemperature = dhtRight.readTemperature(false);
   recordedDHTRightHumidity = dhtRight.readHumidity();
-  Serial.println("Records...");
   Serial.println(recordedDHTLeftTemperature);
   Serial.println(recordedDHTLeftHumidity);
   Serial.println(recordedDHTRightTemperature);
@@ -174,26 +173,39 @@ void loop() {
   Serial.println(" ");
 
   // Cek apakah suhu dan kelembaban melebihi nilai threshold
-  if((recordedDHTLeftHumidity >= thresholdDHTLeftHumidity && recordedDHTLeftTemperature >= thresholdDHTLeftTemperature) ||
-    (recordedDHTRightHumidity >= thresholdDHTRightHumidity && recordedDHTRightTemperature >= thresholdDHTRightTemperature)) {
-    digitalWrite(BUZZER, HIGH);
-    Serial.println("DANGER!!!");
-  } else {
+  leftDanger = recordedDHTLeftHumidity >= thresholdDHTLeftHumidity && recordedDHTLeftTemperature >= thresholdDHTLeftTemperature;
+  rightDanger =  recordedDHTRightHumidity >= thresholdDHTRightHumidity && recordedDHTRightTemperature >= thresholdDHTRightTemperature;
+
+  if(!leftDanger && !rightDanger) {
     digitalWrite(BUZZER, LOW);
-    Serial.println("calm");
+    Serial.println("calm...");
+  } else {
+    if(leftDanger) {
+      digitalWrite(BUZZER, HIGH);
+      Serial.println("LEFT, DANGER!!!");
+    }
+    if(rightDanger) {
+      digitalWrite(BUZZER, HIGH);
+      Serial.println("RIGHT, DANGER!!!");
+    } 
   }
+  Serial.println(" ");
 
   // Simpan data pengukuran ke Realtime Database
   if (millis() - lastRealtimeUpdate > MONITORING_INTERVAL) {
     lastRealtimeUpdate = millis();
-    Serial.println("Updating...");
-    Serial.println("Humidity Left...");
+    Serial.println("Updating monitor values...");
+    Serial.println("Left Status...");
+    database.set<double>(clientRealtime, "/leftDanger", leftDanger);
+    Serial.println("Humidity...");
     database.set<double>(clientRealtime, "/leftHumidity", recordedDHTLeftHumidity);
-    Serial.println("Temperature Left...");
+    Serial.println("Temperature...");
     database.set<double>(clientRealtime, "/leftTemperature", recordedDHTLeftTemperature);
-    Serial.println("Humidity Right...");
+    Serial.println("Right Status...");
+    database.set<double>(clientRealtime, "/rightDanger", rightDanger);
+    Serial.println("Humidity...");
     database.set<double>(clientRealtime, "/rightHumidity", recordedDHTRightHumidity);
-    Serial.println("Temperature Right...");
+    Serial.println("Temperature...");
     database.set<double>(clientRealtime, "/rightTemperature", recordedDHTRightTemperature);
     Serial.println(" ");
   }
@@ -203,6 +215,7 @@ void loop() {
     lastFirestoreUpdate = millis();
     for(int i = 0; i < 2; i++) {
       //.. Susun jadi 1 dokumen
+      Serial.println("Saving recorded conditions...");
       Serial.println("Timestamp...");
       Values::TimestampValue recordTime(getTimestampString(getTime()));
       Serial.println("Temperature...");
@@ -211,7 +224,7 @@ void loop() {
       Values::DoubleValue recordHumidity((i == 0) ? recordedDHTLeftHumidity : recordedDHTRightHumidity);
       Serial.println("Type...");
       Values::IntegerValue recordDHTID(i);
-      Serial.println("Combined...");
+
       Document<Values::Value> doc("dhtid", Values::Value(recordDHTID));
       doc.add("timestamp", Values::Value(recordTime));
       doc.add("temperature", Values::Value(recordTemperature));
@@ -233,9 +246,8 @@ void loop() {
     }
   }
 
-  // Ternyata crash karna delay alamak
   // Delay supaya tidak spam 10 milidetik
-  // delay(1000);
+  delay(1000);
 }
 
 // Untuk autentikasi
