@@ -51,13 +51,11 @@ double thresholdDHTLeftTemperature;
 double thresholdDHTLeftHumidity;
 double recordedDHTLeftTemperature;
 double recordedDHTLeftHumidity;
-bool leftDanger;
 
 double thresholdDHTRightTemperature;
 double thresholdDHTRightHumidity;
 double recordedDHTRightTemperature;
 double recordedDHTRightHumidity;
-bool rightDanger;
 
 unsigned long lastThresholdUpdate = 0;
 unsigned long lastFirestoreUpdate = 0;
@@ -173,8 +171,8 @@ void loop() {
   Serial.println(" ");
 
   // Cek apakah suhu dan kelembaban melebihi nilai threshold
-  leftDanger = recordedDHTLeftHumidity >= thresholdDHTLeftHumidity && recordedDHTLeftTemperature >= thresholdDHTLeftTemperature;
-  rightDanger =  recordedDHTRightHumidity >= thresholdDHTRightHumidity && recordedDHTRightTemperature >= thresholdDHTRightTemperature;
+  bool leftDanger = recordedDHTLeftHumidity >= thresholdDHTLeftHumidity && recordedDHTLeftTemperature >= thresholdDHTLeftTemperature;
+  bool rightDanger =  recordedDHTRightHumidity >= thresholdDHTRightHumidity && recordedDHTRightTemperature >= thresholdDHTRightTemperature;
 
   if(!leftDanger && !rightDanger) {
     digitalWrite(BUZZER, LOW);
@@ -195,17 +193,13 @@ void loop() {
   if (millis() - lastRealtimeUpdate > MONITORING_INTERVAL) {
     lastRealtimeUpdate = millis();
     Serial.println("Updating monitor values...");
-    Serial.println("Left Status...");
-    database.set<double>(clientRealtime, "/leftDanger", leftDanger);
-    Serial.println("Humidity...");
+    Serial.println("Left Humidity...");
     database.set<double>(clientRealtime, "/leftHumidity", recordedDHTLeftHumidity);
-    Serial.println("Temperature...");
+    Serial.println("Left Temperature...");
     database.set<double>(clientRealtime, "/leftTemperature", recordedDHTLeftTemperature);
-    Serial.println("Right Status...");
-    database.set<double>(clientRealtime, "/rightDanger", rightDanger);
-    Serial.println("Humidity...");
+    Serial.println("Right Humidity...");
     database.set<double>(clientRealtime, "/rightHumidity", recordedDHTRightHumidity);
-    Serial.println("Temperature...");
+    Serial.println("Right Temperature...");
     database.set<double>(clientRealtime, "/rightTemperature", recordedDHTRightTemperature);
     Serial.println(" ");
   }
