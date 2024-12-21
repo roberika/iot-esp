@@ -60,8 +60,6 @@ double recordedDHTRightHumidity;
 unsigned long lastThresholdUpdate = 0;
 unsigned long lastFirestoreUpdate = 0;
 unsigned long lastRealtimeUpdate = 0;
-unsigned long epochTime; 
-const char* ntpServer = "pool.ntp.org";
 
 void setup() { 
   // Setup perangkat
@@ -85,9 +83,7 @@ void setup() {
 
   // Konek ke server NTP
   //.. UTC+7 & no daylight savings
-  //.. Manual karena yang ID diset ke 2004
-  configTime(7 * 3600, 0, ntpServer);
-  epochTime = getTime();
+  configTime(0, 0, "id.pool.ntp.org");
   
   // Konek ke Firebase
   Serial.print("Connecting to "); 
@@ -126,14 +122,9 @@ void loop() {
     return;
   }
 
-  Serial.println("-- LOOP --");
-  // Serial.println("Auth Firestore");
   authHandler(appFirestore);
-  // Serial.println("Loop database");
   database.loop();
-  // Serial.println("Loop docs");
   docs.loop();
-  // Serial.println("Kenja time");
 
   // Ambil nilai threshold yang disimpan pada Firebase
   if (millis() - lastThresholdUpdate > THRESHOLD_INTERVAL) {
@@ -158,40 +149,40 @@ void loop() {
     Serial.println(" ");
   }
 
-  // Ambil data suhu dan kelembaban dari dht
-  Serial.println("Recording room condition...");
-  recordedDHTLeftTemperature = dhtLeft.readTemperature(false);
-  recordedDHTLeftHumidity = dhtLeft.readHumidity();
-  recordedDHTRightTemperature = dhtRight.readTemperature(false);
-  recordedDHTRightHumidity = dhtRight.readHumidity();
-  Serial.println(recordedDHTLeftTemperature);
-  Serial.println(recordedDHTLeftHumidity);
-  Serial.println(recordedDHTRightTemperature);
-  Serial.println(recordedDHTRightHumidity);
-  Serial.println(" ");
-
-  // Cek apakah suhu dan kelembaban melebihi nilai threshold
-  bool leftDanger = recordedDHTLeftHumidity >= thresholdDHTLeftHumidity && recordedDHTLeftTemperature >= thresholdDHTLeftTemperature;
-  bool rightDanger =  recordedDHTRightHumidity >= thresholdDHTRightHumidity && recordedDHTRightTemperature >= thresholdDHTRightTemperature;
-
-  if(!leftDanger && !rightDanger) {
-    digitalWrite(BUZZER, LOW);
-    Serial.println("calm...");
-  } else {
-    if(leftDanger) {
-      digitalWrite(BUZZER, HIGH);
-      Serial.println("LEFT, DANGER!!!");
-    }
-    if(rightDanger) {
-      digitalWrite(BUZZER, HIGH);
-      Serial.println("RIGHT, DANGER!!!");
-    } 
-  }
-  Serial.println(" ");
-
-  // Simpan data pengukuran ke Realtime Database
   if (millis() - lastRealtimeUpdate > MONITORING_INTERVAL) {
     lastRealtimeUpdate = millis();
+    // Ambil data suhu dan kelembaban dari dht
+    Serial.println("Recording room condition...");
+    recordedDHTLeftTemperature = dhtLeft.readTemperature(false);
+    recordedDHTLeftHumidity = dhtLeft.readHumidity();
+    recordedDHTRightTemperature = dhtRight.readTemperature(false);
+    recordedDHTRightHumidity = dhtRight.readHumidity();
+    Serial.println(recordedDHTLeftTemperature);
+    Serial.println(recordedDHTLeftHumidity);
+    Serial.println(recordedDHTRightTemperature);
+    Serial.println(recordedDHTRightHumidity);
+    Serial.println(" ");
+
+    // Cek apakah suhu dan kelembaban melebihi nilai threshold
+    bool leftDanger = recordedDHTLeftHumidity >= thresholdDHTLeftHumidity && recordedDHTLeftTemperature >= thresholdDHTLeftTemperature;
+    bool rightDanger =  recordedDHTRightHumidity >= thresholdDHTRightHumidity && recordedDHTRightTemperature >= thresholdDHTRightTemperature;
+
+    if(!leftDanger && !rightDanger) {
+      digitalWrite(BUZZER, LOW);
+      Serial.println("calm...");
+    } else {
+      if(leftDanger) {
+        digitalWrite(BUZZER, HIGH);
+        Serial.println("LEFT, DANGER!!!");
+      }
+      if(rightDanger) {
+        digitalWrite(BUZZER, HIGH);
+        Serial.println("RIGHT, DANGER!!!");
+      } 
+    }
+    Serial.println(" ");
+
+    // Simpan data pengukuran ke Realtime Database
     Serial.println("Updating monitor values...");
     Serial.println("Left Humidity...");
     database.set<double>(clientRealtime, "/leftHumidity", recordedDHTLeftHumidity);
@@ -241,7 +232,8 @@ void loop() {
   }
 
   // Delay supaya tidak spam 10 milidetik
-  delay(1000);
+  // Tidak perlu karena sudah pakai millis
+  // delay(1000);
 }
 
 // Untuk autentikasi
@@ -298,8 +290,9 @@ void printResult(AsyncResult &aResult)
 
 unsigned long getTime() {
   time_t now;
-  struct tm timeinfo;
-  while (!getLocalTime(&timeinfo)) time(&now);
+  tm tm;
+  time(&now);
+  localtime_r(&now, &tm);
   return now;
 }
 
