@@ -40,7 +40,7 @@ WiFiClientSecure sslFirestore, sslRealtime;
 using AsyncClient = AsyncClientClass;
 AsyncClient clientFirestore(sslFirestore, getNetwork(network)), clientRealtime(sslRealtime, getNetwork(network));
 using json = nlohmann::json;
-
+// Konfigurasi perangkat
 void authHandler(FirebaseApp appFirestore);
 String getTimestampString(uint64_t sec);
 unsigned long getTime();
@@ -230,10 +230,6 @@ void loop() {
       Serial.println(" ");
     }
   }
-
-  // Delay supaya tidak spam 10 milidetik
-  // Tidak perlu karena sudah pakai millis
-  // delay(1000);
 }
 
 // Untuk autentikasi
